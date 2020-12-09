@@ -20,6 +20,7 @@ class FtpHandler
     private $hConnection = null;
     private $blackList = array('.', '..', 'Thumbs.db');
 
+
     public function __construct($ftpHost = "", $ftpUser = "", $ftpPass = "") 
     {
         if ($ftpHost != "") 
@@ -48,6 +49,7 @@ class FtpHandler
         }
     }
 
+
     public function __destruct() 
     {
         if (isset($this->hConnection)) 
@@ -58,9 +60,7 @@ class FtpHandler
     }
 
 
-
-
-    // works for folders and files, doesn't work for root folder '/'
+    // for folders and files, except root folder '/'
     public function isFileExist($fullPath)
     {
         if($this->checkConnection())
@@ -89,6 +89,22 @@ class FtpHandler
         return false;
     }
 
+
+    public function putFile($localPath, $remotePath) 
+    {
+        $error = "";
+        try 
+        {
+            \ftp_put($this->hConnection, $remotePath, $localPath, FTP_BINARY); 
+        } 
+        catch (\Exception $e) 
+        {
+            if ($e->getCode() == 2) $error = $e->getMessage(); 
+        }
+        return $error;
+    }
+
+
     public function makeDir($ftpFullPathDir) 
     {
         $error = "";
@@ -103,19 +119,20 @@ class FtpHandler
         return $error;
     }
 
-    
-    public function putFile($localPath, $remotePath) 
+
+    // upload content of localDir into ftpDir
+    public function uploadDir($localDir, $ftpDir)
     {
-        $error = "";
-        try 
+        if($this->checkConnection())
         {
-            \ftp_put($this->hConnection, $remotePath, $localPath, FTP_BINARY); 
-        } 
-        catch (\Exception $e) 
-        {
-            if ($e->getCode() == 2) $error = $e->getMessage(); 
+            if($this->isFileExist($ftpDir)) // check parent folder existence
+            {
+                // local dir copied into ftp dir
+                $this->uploadDirAndFiles($localDir, $ftpDir);
+                return true;
+            }
         }
-        return $error;
+        return false;
     }
 
 
@@ -138,22 +155,6 @@ class FtpHandler
         return false;
     }
 
-    // upload content of localDir into ftpDir
-    public function uploadDir($localDir, $ftpDir)
-    {
-        if($this->checkConnection())
-        {
-            if($this->isFileExist($ftpDir)) // check parent folder existence
-            {
-                // local dir copied into ftp dir
-                $this->uploadDirAndFiles($localDir, $ftpDir);
-                return true;
-            }
-        }
-        return false;
-    }
-
-
     //////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private function checkConnection()
@@ -166,6 +167,57 @@ class FtpHandler
         throw new \Exception("Error: ftp: Connection has failed!");
         return false;
     }
+
+
+    private function uploadDirAndFiles($localDir, $ftpDir)
+    {
+        if(isValidDir($ftpDir) && isValidDir($localDir))
+        {   
+            $errorList = array();
+            if (!\is_dir($localDir)) throw new \Exception("Invalid directory: $localDir");
+            \chdir($localDir);
+            $hDir = \opendir(".");
+            while ($file = \readdir($hDir)) 
+            {
+                if (!\in_array($file, $this->blackList))
+                {
+                    //workaround for symlinks
+                    if(\is_link($file))
+                    {
+                        $linkPath = \readlink($file);
+                        if(isset($linkPath) && !empty($linkPath))
+                        {
+                            $symlinkName = $file.'.sym.link';
+                            $hSymLink = \fopen($symlinkName, "w");
+                            if($hSymLink)
+                            {
+                                \fwrite($hSymLink, $linkPath);
+                                \fflush($hSymLink);
+                                \fclose($hSymLink);
+                                \chmod($symlinkName, 0777);
+                                $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$symlinkName", "$ftpDir/$symlinkName");
+                                \unlink($symlinkName);
+                            }
+                        }
+                    }
+                    else if (\is_dir($file)) 
+                    {
+                        $errorList["$ftpDir/$file"] = $this->makeDir("$ftpDir/$file");
+                        $errorList[] = $this->uploadDirAndFiles("$localDir/$file", "$ftpDir/$file");
+                        \chdir($localDir);
+                    } 
+                    else
+                    {
+                        $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$file", "$ftpDir/$file");
+                    }
+                        
+
+                }
+            }
+            return $errorList;
+        }
+    }
+    
 
     private function deleteDirAndFiles($fullPathDir)
     {
@@ -214,55 +266,6 @@ class FtpHandler
                 echo "Couldn't change directory {$fullPathDir}\n";
                 return;
             }
-        }
-    }
-
-    private function uploadDirAndFiles($localDir, $ftpDir)
-    {
-        if(isValidDir($ftpDir) && isValidDir($localDir))
-        {   
-            $errorList = array();
-            if (!\is_dir($localDir)) throw new \Exception("Invalid directory: $localDir");
-            \chdir($localDir);
-            $hDir = \opendir(".");
-            while ($file = \readdir($hDir)) 
-            {
-                if (!\in_array($file, $this->blackList))
-                {
-                    //workaround for symlinks
-                    if(\is_link($file))
-                    {
-                        $linkPath = \readlink($file);
-                        if(isset($linkPath) && !empty($linkPath))
-                        {
-                            $symlinkName = $file.'.sym.link';
-                            $hSymLink = \fopen($symlinkName, "w");
-                            if($hSymLink)
-                            {
-                                \fwrite($hSymLink, $linkPath);
-                                \fflush($hSymLink);
-                                \fclose($hSymLink);
-                                chmod($symlinkName, 0777);
-                                $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$symlinkName", "$ftpDir/$symlinkName");
-                                \unlink($symlinkName);
-                            }
-                        }
-                    }
-                    else if (\is_dir($file)) 
-                    {
-                        $errorList["$ftpDir/$file"] = $this->makeDir("$ftpDir/$file");
-                        $errorList[] = $this->uploadDirAndFiles("$localDir/$file", "$ftpDir/$file");
-                        \chdir($localDir);
-                    } 
-                    else
-                    {
-                        $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$file", "$ftpDir/$file");
-                    }
-                        
-
-                }
-            }
-            return $errorList;
         }
     }
 
