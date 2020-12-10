@@ -11,8 +11,6 @@ use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, i
 //flush buffers
 
 //make custom exception class and add object insode class
-//handle symbolic links in downloadDir()
-// do not show message on ftp_mkdir in uploadDir
 // todo handle Exception in isFileExist
 // todo close() func, sometimes can be needed to close manually to proceed to other ftp connection
 
@@ -20,7 +18,7 @@ use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, i
 class FtpHandler
 {
     private $hConnection = null;
-    private $blackList = array('.', '..', 'Thumbs.db');
+    private $blackList = array('.', '..', 'Thumbs.db'); // ignore included files on upload/download
 
 
     public function __construct($ftpHost = "", $ftpUser = "", $ftpPass = "") 
@@ -54,13 +52,20 @@ class FtpHandler
 
     public function __destruct() 
     {
+        $this->close();
+    }
+
+    /**
+     * Close connection manually. Can be needed when dealing with multiple connections
+     */
+    public function close()
+    {
         if (isset($this->hConnection)) 
         {
             \ftp_close($this->hConnection);
             unset($this->hConnection);
         }
     }
-
 
     /**
      * for folders and files, except root folder '/'
@@ -91,9 +96,6 @@ class FtpHandler
 
                     $files = \ftp_nlist($this->hConnection, "-a .");
                     
-                    echo $fileName, PHP_EOL;
-                    var_dump($files);
-
                     foreach($files as $file)
                     {
                         if($file === $fileName)
@@ -260,18 +262,17 @@ class FtpHandler
                     if(\is_link($file))
                     {
                         $linkPath = \readlink($file);
-                        if(isset($linkPath) && !empty($linkPath))
+                        if(isset($linkPath) && strlen($linkPath)>0)
                         {
-                            $symlinkName = $file.'.sym.link';
-                            $hSymLink = \fopen($symlinkName, "w");
+                            $symLinkName = $file.'.slnkstore';
+                            $hSymLink = \fopen($symLinkName, "w");
                             if($hSymLink)
                             {
                                 \fwrite($hSymLink, $linkPath);
-                                \fflush($hSymLink);
                                 \fclose($hSymLink);
-                                \chmod($symlinkName, 0777);
-                                $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$symlinkName", "$ftpDir/$symlinkName");
-                                \unlink($symlinkName);
+                                \chmod($symLinkName, 0777);
+                                $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$symLinkName", "$ftpDir/$symLinkName");
+                                \unlink($symLinkName);
                             }
                         }
                     }
@@ -300,10 +301,8 @@ class FtpHandler
 
     private function downloadDirAndFiles($localDir, $ftpDir)
     {
-        echo $ftpDir;
         if(isValidDir($localDir) && isValidDir($ftpDir))
         {   
-            
             if($this->isDirChanged($ftpDir)) 
             {
                 $curDirRestore = \ftp_pwd($this->hConnection); // store here, otherwise error, because current dir changes via ftp_chdir
@@ -318,20 +317,43 @@ class FtpHandler
                     {
                         if(isStrEndsWith($rawPaths[$i], $filePaths[$i]))
                         {
-                            if(isValidDir($filePaths[$i]))
+                            if (!\in_array($filePaths[$i], $this->blackList))
                             {
                                 $innerLocalPath = $localDir.DIRECTORY_SEPARATOR.$filePaths[$i];
                                 $innerFtpPath = $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i];
-                                if($rawPaths[$i][0] === 'd')
-                                {
                                     
+                                if ($rawPaths[$i][0] === 'd') 
+                                {
                                     \mkdir($innerLocalPath);
                                     $this->downloadDirAndFiles($innerLocalPath, $innerFtpPath);
-                                }
-                                else
+                                } 
+                                else 
                                 {
                                     //handle exception
-                                    ftp_get($this->hConnection, $innerLocalPath, $innerFtpPath, FTP_BINARY);
+                                    \ftp_get($this->hConnection, $innerLocalPath, $innerFtpPath, FTP_BINARY);
+
+                                    // workaround for symlinks
+                                    if (isStrEndsWith($innerLocalPath, '.slnkstore')) 
+                                    {
+                                        $hSymLink = \fopen($innerLocalPath, "r"); // read only
+                                        if($hSymLink)
+                                        {
+                                            \fseek($hSymLink, 0, SEEK_END);
+                                            $fileSize = \ftell($hSymLink);
+
+                                            \fseek($hSymLink, 0, SEEK_SET); 
+                                            $linkTarget = \fread($hSymLink, $fileSize);
+
+                                            \fclose($hSymLink);
+                                            \unlink($innerLocalPath);
+                                            
+                                            if(isset($linkTarget) && \strlen($linkTarget)>0)
+                                            {
+                                                \symlink($linkTarget, \substr($innerLocalPath, 0, -(\strlen('.slnkstore'))));
+                                            }
+                                        }
+                                    }
+
                                 }
                             }
                         }
@@ -359,11 +381,6 @@ class FtpHandler
                 //-A is not supported by all ftp apps
                 $rawPaths = \ftp_rawlist($this->hConnection, "-la .");
                 $filePaths = \ftp_nlist($this->hConnection, "-a .");
-                
-
-                var_dump($rawPaths);
-                echo PHP_EOL;
-                var_dump($filePaths);
 
                 if(\count($rawPaths) == \count($filePaths))
                 {
