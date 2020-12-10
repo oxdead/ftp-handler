@@ -4,6 +4,8 @@ require "lyo_funcs_general.php";
 use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, isStrEndsWith};
 
 
+//todo: mb_stuff
+
 //todo: asyncronous copying?
 
 //todo: use ob
