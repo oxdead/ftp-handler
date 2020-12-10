@@ -4,19 +4,32 @@ require "lyo_funcs_general.php";
 use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, isStrEndsWith};
 
 
+//todo: asyncronous copying?
 
 //todo: use ob
 //https://www.php.net/manual/en/book.outcontrol.php
 //https://stackoverflow.com/questions/927341/upload-entire-directory-via-php-ftp
 
-//make custom exception class and add object insode class
-// todo handle Exception in isFileExist
-
+// todo: use exception class for errors to be able to reference file and line of code, also use set_exception_handler for custom formatting
 
 class FtpHandler
 {
     private $hConnection = null;
     private $blackList = array('.', '..', 'Thumbs.db'); // ignore included files on upload/download
+
+    //errors
+    private const CNNCTN = 'Connection has failed!';
+    private const LOGIN = 'Login name or password is incorrect!';
+    private const CHDIR = 'Directory change failed!';
+    //private const MKDIR = 'Directory creation failed!';
+    private const ISDIR = 'Invalid directory';
+    private const ISFILE = 'File doesnt exist!';
+    //private const PUT = 'File upload failed!';
+    //private const GET = 'File download failed!';
+    private const DEL = 'File deletion failed';
+    
+    
+    
 
 
     public function __construct($ftpHost = "", $ftpUser = "", $ftpPass = "") 
@@ -35,14 +48,12 @@ class FtpHandler
                 {
                     \ftp_close($this->hConnection);
                     unset($this->hConnection);
-                    //todo: handle Exception properly
-                    echo("Error: ftp: $ftpUser: Login name or password is incorrect!");
+                    $this->err('CNNCTN', $ftpUser);
                 }
             }
             else
             {
-                //todo: handle Exception properly
-                echo ("Error: ftp: $ftpHost: Connection has failed!");
+                $this->err('CNNCTN', $ftpHost);
             }
         }
     }
@@ -68,10 +79,10 @@ class FtpHandler
 
 
     /**
-     * get list of file names (relative) inside directory
+     * get list of file names (relative) inside directory. Changes current dir.
      * @param string $fullPathDir
      * @param string $option -la, -a..
-     * @return array returns empty, if failed or directory is empty
+     * @return array|false
      */
     public function getFilesList($fullPathDir, $option = '-a')
     {
@@ -80,21 +91,22 @@ class FtpHandler
             $fullPathDir = \rtrim($fullPathDir, "/\\");
             if (isset($fullPathDir) && \strlen($fullPathDir) > 0) 
             {
-                $curDirRestore = \ftp_pwd($this->hConnection);
                 if (\ftp_chdir($this->hConnection, $fullPathDir)) 
                 {
-                    $fileslist = ftp_nlist($this->hConnection, "{$option} .");
-                    \ftp_chdir($this->hConnection, $curDirRestore);
-                    return $fileslist;
+                    return \ftp_nlist($this->hConnection, "{$option} .");
+                }
+                else
+                {
+                    $this->err('CHDIR', $fullPathDir);
                 }
             }
         }
-        return array();
+        return false;
     }
 
 
     /**
-     * for folders and files, except root folder '/'
+     * for folders and files, except root folder '/'. Changes current dir
      * @param string $fullPath 
      * @return bool
      */
@@ -111,7 +123,6 @@ class FtpHandler
 
             if(isValidDir($parentPath))
             {
-                // todo handle Exception here
                 if (\ftp_chdir($this->hConnection, $parentPath))
                 {
                     $files = \ftp_nlist($this->hConnection, "-a .");
@@ -124,8 +135,13 @@ class FtpHandler
                         }
                     }
                 }
+                else
+                {
+                    $this->err('CHDIR', $parentPath);
+                }
             }
         }
+        $this->err('ISFILE', $fullPath);
         return false;
     }
 
@@ -133,39 +149,30 @@ class FtpHandler
     /**
      * @param string $localPath 
      * @param string $ftpPath
-     * @return string $error
+     */
+    public function getFile($localPath, $ftpPath) 
+    {
+        \ftp_get($this->hConnection, $localPath, $ftpPath, FTP_BINARY);
+    }
+    
+
+    /**
+     * @param string $localPath 
+     * @param string $ftpPath
      */
     public function putFile($localPath, $ftpPath) 
     {
-        $error = "";
-        try 
-        {
-            \ftp_put($this->hConnection, $ftpPath, $localPath, FTP_BINARY); 
-        } 
-        catch (\Exception $e) 
-        {
-            if ($e->getCode() == 2) $error = $e->getMessage(); 
-        }
-        return $error;
+        \ftp_put($this->hConnection, $ftpPath, $localPath, FTP_BINARY);
     }
 
 
     /**
      * @param string $ftpDir
-     * @return string $error
      */
     public function makeDir($ftpDir) 
     {
-        $error = "";
-        try 
-        {
-            \ftp_mkdir($this->hConnection, $ftpDir);
-        } 
-        catch (\Exception $e) 
-        {
-            if ($e->getCode() == 2) $error = $e->getMessage(); 
-        }
-        return $error;
+        // notice: stupid function returns false and creates warning even on successful dir creation
+        \ftp_mkdir($this->hConnection, $ftpDir); 
     }
 
 
@@ -173,7 +180,7 @@ class FtpHandler
      * upload content of localDir into ftpDir
      * @param string $localDir 
      * @param string $ftpDir
-     * @return array $errorList
+     * @return bool
      */
     public function uploadDir($localDir, $ftpDir)
     {
@@ -213,7 +220,7 @@ class FtpHandler
     {
         if($ftpDir === '\\' || $ftpDir === '/') 
         { 
-            throw new \Exception("Cannot delete root directory");
+            $this->err('DEL', $ftpDir);
             return false; 
         }
 
@@ -227,6 +234,14 @@ class FtpHandler
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////
 
+    private function err($err, ...$helpers)
+    {
+        $help = "";
+        foreach($helpers as $helper) { $help.=($helper)." "; }
+        echo "error:ftp: ".constant("self::$err")." ( {$help})", PHP_EOL;
+    }
+
+
     private function checkConnection()
     {
         if (isset($this->hConnection)) 
@@ -234,7 +249,7 @@ class FtpHandler
             return true;
         }
 
-        throw new \Exception("Error: ftp: Connection has failed!");
+        $this->err('CNNCTN');
         return false;
     }
 
@@ -250,7 +265,6 @@ class FtpHandler
 
         if(isValidDir($fullPath))
         {
-            // todo: handle Exception here
             if (\ftp_chdir($this->hConnection, $fullPath))
             {
                 if ($fullPath === \rtrim(\ftp_pwd($this->hConnection), "/\\")) 
@@ -259,6 +273,7 @@ class FtpHandler
                 }
             }
         }
+        $this->err('CHDIR', $fullPath);
         return false;
     }
 
@@ -267,10 +282,10 @@ class FtpHandler
     {
         if(isValidDir($localDir) && isValidDir($ftpDir))
         {   
-            $errorList = array();
             if (!\is_dir($localDir)) 
             {
-                throw new \Exception("Invalid directory: $localDir");
+                $this->err('ISDIR', $localDir);
+                return;
             }
             \chdir($localDir);
             $hDir = \opendir(".");
@@ -278,6 +293,7 @@ class FtpHandler
             {
                 if (!\in_array($file, $this->blackList))
                 {
+                    $s = DIRECTORY_SEPARATOR;
                     //workaround for symlinks
                     if(\is_link($file))
                     {
@@ -291,30 +307,30 @@ class FtpHandler
                                 \fwrite($hSymLink, $linkPath);
                                 \fclose($hSymLink);
                                 \chmod($symLinkName, 0777);
-                                $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$symLinkName", "$ftpDir/$symLinkName");
+                                \ftp_put($this->hConnection, "$ftpDir{$s}$symLinkName", "$localDir{$s}$symLinkName", FTP_BINARY);
                                 \unlink($symLinkName);
                             }
                         }
                     }
                     else if (\is_dir($file)) 
                     {
-                        $errorList["$ftpDir/$file"] = $this->makeDir("$ftpDir/$file");
-                        $errorList[] = $this->uploadDirAndFiles("$localDir/$file", "$ftpDir/$file");
+                        \ftp_mkdir($this->hConnection, "$ftpDir{$s}$file");
+                        $this->uploadDirAndFiles("$localDir{$s}$file", "$ftpDir{$s}$file");
                         \chdir($localDir);
                     } 
                     else
                     {
-                        $errorList["$ftpDir/$file"] = $this->putFile("$localDir/$file", "$ftpDir/$file");
+                        \ftp_put($this->hConnection, "$ftpDir{$s}$file", "$localDir{$s}$file", FTP_BINARY);
                     }
                         
 
                 }
             }
+
             if (isset($hDir)) 
             {
                 \closedir($hDir);
             }
-            return $errorList;
         }
     }
 
@@ -328,30 +344,29 @@ class FtpHandler
                 $curDirRestore = \ftp_pwd($this->hConnection); // store here, otherwise error, because current dir changes via ftp_chdir
 
                 //-a is not supported by all ftp apps
-                //$rawPaths = \ftp_rawlist($this->hConnection, "-la .");
-                $rawPaths = \ftp_nlist($this->hConnection, "-la .");
+                //$fileInfo = \ftp_rawlist($this->hConnection, "-la .");
+                $fileInfo = \ftp_nlist($this->hConnection, "-la .");
                 $filePaths = \ftp_nlist($this->hConnection, "-a .");
             
-                if(\count($rawPaths) == \count($filePaths))
+                if(\count($fileInfo) == \count($filePaths))
                 {
-                    for($i = 0; $i < \count($rawPaths); ++$i)
+                    for($i = 0; $i < \count($fileInfo); ++$i)
                     {
-                        if(isStrEndsWith($rawPaths[$i], $filePaths[$i]))
+                        if(isStrEndsWith($fileInfo[$i], $filePaths[$i]))
                         {
                             if (!\in_array($filePaths[$i], $this->blackList))
                             {
                                 $innerLocalPath = $localDir.DIRECTORY_SEPARATOR.$filePaths[$i];
                                 $innerFtpPath = $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i];
                                     
-                                //if ($rawPaths[$i][0] === 'd') 
-                                if(mb_substr($rawPaths[$i], 0, 1, 'utf-8') === 'd')
+                                //if ($fileInfo[$i][0] === 'd') 
+                                if(\mb_substr($fileInfo[$i], 0, 1, 'utf-8') === 'd')
                                 {
                                     \mkdir($innerLocalPath);
                                     $this->downloadDirAndFiles($innerLocalPath, $innerFtpPath);
                                 } 
                                 else 
                                 {
-                                    //handle exception
                                     \ftp_get($this->hConnection, $innerLocalPath, $innerFtpPath, FTP_BINARY);
 
                                     // workaround for symlinks
@@ -382,12 +397,6 @@ class FtpHandler
                     }
                 }
             } 
-            else 
-            { 
-                //todo exception
-                echo "Couldn't change directory {$ftpDir}\n";
-                return;
-            }
         }
     }
 
@@ -398,23 +407,20 @@ class FtpHandler
         {   
             if (\ftp_chdir($this->hConnection, $ftpDir)) 
             {
-                $curDirRestore = \ftp_pwd($this->hConnection); // store here, otherwise error, because current dir changes via ftp_chdir
+                $curDirRestore = \ftp_pwd($this->hConnection); // store here, current dir changes in inner folders via ftp_chdir
 
-                //-a is not supported by all ftp apps
-                //$rawPaths = \ftp_rawlist($this->hConnection, "-la .");
-                $rawPaths = \ftp_nlist($this->hConnection, "-la .");
+                $fileInfo = \ftp_nlist($this->hConnection, "-la .");
                 $filePaths = \ftp_nlist($this->hConnection, "-a .");
 
-                if(\count($rawPaths) == \count($filePaths))
+                if(\count($fileInfo) == \count($filePaths))
                 {
-                    for($i = 0; $i < \count($rawPaths); ++$i)
+                    for($i = 0; $i < \count($fileInfo); ++$i)
                     {
-                        if(isStrEndsWith($rawPaths[$i], $filePaths[$i]))
+                        if(isStrEndsWith($fileInfo[$i], $filePaths[$i]))
                         {
                             if(isValidDir($filePaths[$i]))
                             {
-                                //if($rawPaths[$i][0] === 'd')
-                                if(mb_substr($rawPaths[$i], 0, 1, 'utf-8') === 'd')
+                                if(mb_substr($fileInfo[$i], 0, 1, 'utf-8') === 'd')
                                 {
                                     $this->deleteDirAndFiles($curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i]);
                                 }
@@ -423,7 +429,7 @@ class FtpHandler
                                     //$isfilechmo = ftp_chmod($this->hConnection, 0777, $filePaths[$i]); // doesn't work? check again with pasv=true
                                     if(!\ftp_delete($this->hConnection, $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i]))
                                     {
-                                        echo "failed to delete file ".$filePaths[$i].PHP_EOL;
+                                        $this->err('DEL', $filePaths[$i]);
                                     }
                                 }
                             }
@@ -432,14 +438,13 @@ class FtpHandler
 
                     if(!\ftp_rmdir($this->hConnection , $ftpDir))
                     {
-                        echo "failed to delete folder ".$ftpDir.PHP_EOL;
+                        $this->err('DEL', $ftpDir);
                     }
                 }
             } 
             else 
             { 
-                echo "Couldn't change directory {$ftpDir}\n";
-                return;
+                $this->err('CHDIR', $ftpDir);
             }
         }
     }
