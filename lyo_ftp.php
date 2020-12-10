@@ -8,11 +8,9 @@ use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, i
 //todo: use ob
 //https://www.php.net/manual/en/book.outcontrol.php
 //https://stackoverflow.com/questions/927341/upload-entire-directory-via-php-ftp
-//flush buffers
 
 //make custom exception class and add object insode class
 // todo handle Exception in isFileExist
-// todo close() func, sometimes can be needed to close manually to proceed to other ftp connection
 
 
 class FtpHandler
@@ -55,8 +53,9 @@ class FtpHandler
         $this->close();
     }
 
+
     /**
-     * Close connection manually. Can be needed when dealing with multiple connections
+     * Close connection manually. Can be useful when dealing with multiple connections
      */
     public function close()
     {
@@ -67,6 +66,33 @@ class FtpHandler
         }
     }
 
+
+    /**
+     * get list of file names (relative) inside directory
+     * @param string $fullPathDir
+     * @param string $option -la, -a..
+     * @return array returns empty, if failed or directory is empty
+     */
+    public function getFilesList($fullPathDir, $option = '-a')
+    {
+        if ($this->checkConnection()) 
+        {
+            $fullPathDir = \rtrim($fullPathDir, "/\\");
+            if (isset($fullPathDir) && \strlen($fullPathDir) > 0) 
+            {
+                $curDirRestore = \ftp_pwd($this->hConnection);
+                if (\ftp_chdir($this->hConnection, $fullPathDir)) 
+                {
+                    $fileslist = ftp_nlist($this->hConnection, "{$option} .");
+                    \ftp_chdir($this->hConnection, $curDirRestore);
+                    return $fileslist;
+                }
+            }
+        }
+        return array();
+    }
+
+
     /**
      * for folders and files, except root folder '/'
      * @param string $fullPath 
@@ -74,10 +100,8 @@ class FtpHandler
      */
     public function isFileExist($fullPath)
     {
-        
         if($this->checkConnection())
         {
-            
             $fullPath = \rtrim($fullPath, "/\\");
             $parentPath = extractFilepath($fullPath);
 
@@ -87,13 +111,9 @@ class FtpHandler
 
             if(isValidDir($parentPath))
             {
-                
-
                 // todo handle Exception here
                 if (\ftp_chdir($this->hConnection, $parentPath))
                 {
-                    
-
                     $files = \ftp_nlist($this->hConnection, "-a .");
                     
                     foreach($files as $file)
@@ -308,7 +328,8 @@ class FtpHandler
                 $curDirRestore = \ftp_pwd($this->hConnection); // store here, otherwise error, because current dir changes via ftp_chdir
 
                 //-a is not supported by all ftp apps
-                $rawPaths = \ftp_rawlist($this->hConnection, "-la .");
+                //$rawPaths = \ftp_rawlist($this->hConnection, "-la .");
+                $rawPaths = \ftp_nlist($this->hConnection, "-la .");
                 $filePaths = \ftp_nlist($this->hConnection, "-a .");
             
                 if(\count($rawPaths) == \count($filePaths))
@@ -322,7 +343,8 @@ class FtpHandler
                                 $innerLocalPath = $localDir.DIRECTORY_SEPARATOR.$filePaths[$i];
                                 $innerFtpPath = $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i];
                                     
-                                if ($rawPaths[$i][0] === 'd') 
+                                //if ($rawPaths[$i][0] === 'd') 
+                                if(mb_substr($rawPaths[$i], 0, 1, 'utf-8') === 'd')
                                 {
                                     \mkdir($innerLocalPath);
                                     $this->downloadDirAndFiles($innerLocalPath, $innerFtpPath);
@@ -378,8 +400,9 @@ class FtpHandler
             {
                 $curDirRestore = \ftp_pwd($this->hConnection); // store here, otherwise error, because current dir changes via ftp_chdir
 
-                //-A is not supported by all ftp apps
-                $rawPaths = \ftp_rawlist($this->hConnection, "-la .");
+                //-a is not supported by all ftp apps
+                //$rawPaths = \ftp_rawlist($this->hConnection, "-la .");
+                $rawPaths = \ftp_nlist($this->hConnection, "-la .");
                 $filePaths = \ftp_nlist($this->hConnection, "-a .");
 
                 if(\count($rawPaths) == \count($filePaths))
@@ -390,7 +413,8 @@ class FtpHandler
                         {
                             if(isValidDir($filePaths[$i]))
                             {
-                                if($rawPaths[$i][0] === 'd')
+                                //if($rawPaths[$i][0] === 'd')
+                                if(mb_substr($rawPaths[$i], 0, 1, 'utf-8') === 'd')
                                 {
                                     $this->deleteDirAndFiles($curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i]);
                                 }
