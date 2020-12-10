@@ -138,6 +138,7 @@ class FtpHandler
                 else
                 {
                     $this->err('CHDIR', $parentPath);
+                    return false;
                 }
             }
         }
@@ -237,7 +238,7 @@ class FtpHandler
     private function err($err, ...$helpers)
     {
         $help = "";
-        foreach($helpers as $helper) { $help.=($helper)." "; }
+        foreach($helpers as $helper) { $help.=($helper." "); }
         echo "error:ftp: ".constant("self::$err")." ( {$help})", PHP_EOL;
     }
 

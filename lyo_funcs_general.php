@@ -58,7 +58,7 @@ function isStrEndsWith($haystack, $needle)
 
 function isValidStr($str)
 {
-    return (isset($str) && !empty($str));
+    return (isset($str) && strlen($str)>0);
 }
 
 
