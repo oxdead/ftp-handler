@@ -4,7 +4,6 @@ require "lyo_funcs_general.php";
 use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, isStrEndsWith};
 
 
-//todo: mb_stuff
 
 //todo: asyncronous copying?
 
@@ -91,7 +90,7 @@ class FtpHandler
         if ($this->checkConnection()) 
         {
             $fullPathDir = \rtrim($fullPathDir, "/\\");
-            if (isset($fullPathDir) && \strlen($fullPathDir) > 0) 
+            if (isset($fullPathDir) && \mb_strlen($fullPathDir, "UTF-8") > 0) 
             {
                 if (\ftp_chdir($this->hConnection, $fullPathDir)) 
                 {
@@ -120,7 +119,7 @@ class FtpHandler
             $parentPath = extractFilepath($fullPath);
 
             //todo: windows
-            if(isset($parentPath) && \strlen($parentPath) == 0) { $parentPath = '/'; }
+            if(isset($parentPath) && \mb_strlen($parentPath, "UTF-8") == 0) { $parentPath = '/'; }
             $fileName = extractFilename($fullPath);
 
             if(isValidDir($parentPath))
@@ -260,7 +259,7 @@ class FtpHandler
     private function isDirChanged($fullPath)
     {
         $fullPath = \rtrim($fullPath, "/\\");
-        if(isset($fullPath) && \strlen($fullPath) == 0) 
+        if(isset($fullPath) && \mb_strlen($fullPath, "UTF-8") == 0) 
         { 
             //todo: windows
             $fullPath = '/'; 
@@ -301,7 +300,7 @@ class FtpHandler
                     if(\is_link($file))
                     {
                         $linkPath = \readlink($file);
-                        if(isset($linkPath) && strlen($linkPath)>0)
+                        if(isset($linkPath) && mb_strlen($linkPath, "UTF-8")>0)
                         {
                             $symLinkName = $file.'.slnkstore';
                             $hSymLink = \fopen($symLinkName, "w");
@@ -363,7 +362,7 @@ class FtpHandler
                                 $innerFtpPath = $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i];
                                     
                                 //if ($fileInfo[$i][0] === 'd') 
-                                if(\mb_substr($fileInfo[$i], 0, 1, 'utf-8') === 'd')
+                                if(\mb_substr($fileInfo[$i], 0, 1, "UTF-8") === 'd')
                                 {
                                     \mkdir($innerLocalPath);
                                     $this->downloadDirAndFiles($innerLocalPath, $innerFtpPath);
@@ -373,7 +372,7 @@ class FtpHandler
                                     \ftp_get($this->hConnection, $innerLocalPath, $innerFtpPath, FTP_BINARY);
 
                                     // workaround for symlinks
-                                    if (isStrEndsWith($innerLocalPath, '.slnkstore')) 
+                                    if (isStrEndsWith($innerLocalPath, ".slnkstore")) 
                                     {
                                         $hSymLink = \fopen($innerLocalPath, "r"); // read only
                                         if($hSymLink)
@@ -387,9 +386,9 @@ class FtpHandler
                                             \fclose($hSymLink);
                                             \unlink($innerLocalPath);
                                             
-                                            if(isset($linkTarget) && \strlen($linkTarget)>0)
+                                            if(isset($linkTarget) && \mb_strlen($linkTarget, "UTF-8")>0)
                                             {
-                                                \symlink($linkTarget, \substr($innerLocalPath, 0, -(\strlen('.slnkstore'))));
+                                                \symlink($linkTarget, \mb_substr($innerLocalPath, 0, -(\mb_strlen(".slnkstore", "UTF-8")), "UTF-8"));
                                             }
                                         }
                                     }
@@ -423,7 +422,7 @@ class FtpHandler
                         {
                             if(isValidDir($filePaths[$i]))
                             {
-                                if(mb_substr($fileInfo[$i], 0, 1, 'utf-8') === 'd')
+                                if(mb_substr($fileInfo[$i], 0, 1, "UTF-8") === 'd')
                                 {
                                     $this->deleteDirAndFiles($curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i]);
                                 }

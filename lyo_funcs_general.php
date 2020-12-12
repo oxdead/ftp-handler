@@ -9,7 +9,7 @@ namespace Lyo\Funcs\General;
 //todo: seems like pathinfo() is not very good, try basename() func
 function extractFilename($fullPath)
 {
-    $len = \strlen($fullPath);
+    $len = \mb_strlen($fullPath, "UTF-8");
     for ($i = ($len-1) ; $i >= 0 ; --$i)
     {
         if($fullPath[$i] === '/' || $fullPath[$i] === "\\")
@@ -18,7 +18,7 @@ function extractFilename($fullPath)
             $l = $len - $s;
             if($s > 0 && $l >= 0)
             {
-                return \substr($fullPath, $s, $l);
+                return \mb_substr($fullPath, $s, $l, "UTF-8");
             }
             break;
         }
@@ -29,12 +29,12 @@ function extractFilename($fullPath)
 
 function extractFilepath($fullPath)
 {
-    $len = \strlen($fullPath);
+    $len = \mb_strlen($fullPath, "UTF-8");
     for ($i = ($len-1) ; $i >= 0 ; --$i)
     {
         if($fullPath[$i] === '/' || $fullPath[$i] === "\\")
         {
-            return \substr($fullPath, 0, $i); // '/' excluded
+            return \mb_substr($fullPath, 0, $i, "UTF-8"); // '/' excluded
         }
     }
     return false;
@@ -43,22 +43,22 @@ function extractFilepath($fullPath)
 
 function isStrBeginsWith($haystack, $needle) 
 {
-    $length = \strlen($needle);
-    return \substr($haystack, 0, $length) === $needle;
+    $length = \mb_strlen($needle, "UTF-8");
+    return \mb_substr($haystack, 0, $length, "UTF-8") === $needle;
 }
 
 
 function isStrEndsWith($haystack, $needle) 
 {
-   $length = \strlen($needle);
+   $length = \mb_strlen($needle, "UTF-8");
    if($length < 1) { return true; }
-   return \substr($haystack, -$length) === $needle;
+   return \mb_substr($haystack, -$length, null, "UTF-8") === $needle;
 }
 
 
 function isValidStr($str)
 {
-    return (isset($str) && strlen($str)>0);
+    return (isset($str) && mb_strlen($str, "UTF-8")>0);
 }
 
 
