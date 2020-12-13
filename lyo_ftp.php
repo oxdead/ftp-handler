@@ -239,8 +239,19 @@ class Handler
         return false;
     }
 
-    //////////////////////////////////////////////////////////////////////////////////////////////////////
+    /**
+     * Add additional files to be ignored on upload/download. Persists to the end of object life
+     * @param array<string> $relativePaths
+     */
+    public function ignoreFiles($relativePaths)
+    {
+        foreach($relativePaths as $ignoredFile)
+        {
+            $this->blackList[] = $ignoredFile;
+        }
+    }
 
+    //////////////////////////////////////////////////////////////////////////////////////////////////////
 
     private function checkConnection()
     {
