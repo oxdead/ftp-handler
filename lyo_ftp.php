@@ -1,5 +1,5 @@
 <?php
-namespace Lyo;
+namespace Lyo\Ftp;
 require "lyo_funcs_general.php";
 use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, isStrEndsWith};
 
@@ -11,14 +11,10 @@ use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, i
 //https://www.php.net/manual/en/book.outcontrol.php
 //https://stackoverflow.com/questions/927341/upload-entire-directory-via-php-ftp
 
-// todo: use exception class for errors to be able to reference file and line of code, also use set_exception_handler for custom formatting
 
-class FtpHandler
+// todo: extend exception class to be able to reference file and line of code. Also use set_exception_handler for custom formatting
+class Error
 {
-    private $hConnection = null;
-    private $blackList = array('.', '..', 'Thumbs.db'); // ignore included files on upload/download
-
-    //errors
     private const CNNCTN = 'Connection has failed!';
     private const LOGIN = 'Login name or password is incorrect!';
     private const CHDIR = 'Directory change failed!';
@@ -28,10 +24,21 @@ class FtpHandler
     //private const PUT = 'File upload failed!';
     //private const GET = 'File download failed!';
     private const DEL = 'File deletion failed';
-    
-    
-    
 
+    public function __construct($err, ...$helpers)
+    {
+        $help = "";
+        foreach($helpers as $helper) { $help.=($helper." "); }
+        echo "error:ftp: ".constant("self::$err")." ( {$help})", PHP_EOL;
+    }
+};
+
+
+
+class Handler
+{
+    private $hConnection = null;
+    private $blackList = array('.', '..', 'Thumbs.db'); // ignore included files on upload/download
 
     public function __construct($ftpHost = "", $ftpUser = "", $ftpPass = "") 
     {
@@ -44,19 +51,17 @@ class FtpHandler
                 {
                     //nlist, rawlist, get, put do not work in active mode
                     \ftp_pasv($this->hConnection, true);
+                    return;
                 } 
                 else 
                 {
                     \ftp_close($this->hConnection);
                     unset($this->hConnection);
-                    $this->err('CNNCTN', $ftpUser);
+                    new Error('CNNCTN', $ftpHost, $ftpUser);
                 }
             }
-            else
-            {
-                $this->err('CNNCTN', $ftpHost);
-            }
         }
+        new Error('CNNCTN', $ftpHost);
     }
 
 
@@ -98,7 +103,7 @@ class FtpHandler
                 }
                 else
                 {
-                    $this->err('CHDIR', $fullPathDir);
+                    new Error('CHDIR', $fullPathDir);
                 }
             }
         }
@@ -138,12 +143,12 @@ class FtpHandler
                 }
                 else
                 {
-                    $this->err('CHDIR', $parentPath);
+                    new Error('CHDIR', $parentPath);
                     return false;
                 }
             }
         }
-        $this->err('ISFILE', $fullPath);
+        new Error('ISFILE', $fullPath);
         return false;
     }
 
@@ -173,7 +178,7 @@ class FtpHandler
      */
     public function makeDir($ftpDir) 
     {
-        // notice: stupid function returns false and creates warning even on successful dir creation
+        // notice: stupid ftp_mkdir function returns false and creates warning even on successful dir creation
         \ftp_mkdir($this->hConnection, $ftpDir); 
     }
 
@@ -222,7 +227,7 @@ class FtpHandler
     {
         if($ftpDir === '\\' || $ftpDir === '/') 
         { 
-            $this->err('DEL', $ftpDir);
+            new Error('DEL', $ftpDir);
             return false; 
         }
 
@@ -236,13 +241,6 @@ class FtpHandler
 
     //////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    private function err($err, ...$helpers)
-    {
-        $help = "";
-        foreach($helpers as $helper) { $help.=($helper." "); }
-        echo "error:ftp: ".constant("self::$err")." ( {$help})", PHP_EOL;
-    }
-
 
     private function checkConnection()
     {
@@ -251,7 +249,7 @@ class FtpHandler
             return true;
         }
 
-        $this->err('CNNCTN');
+        new Error('CNNCTN');
         return false;
     }
 
@@ -275,7 +273,7 @@ class FtpHandler
                 }
             }
         }
-        $this->err('CHDIR', $fullPath);
+        new Error('CHDIR', $fullPath);
         return false;
     }
 
@@ -286,7 +284,7 @@ class FtpHandler
         {   
             if (!\is_dir($localDir)) 
             {
-                $this->err('ISDIR', $localDir);
+                new Error('ISDIR', $localDir);
                 return;
             }
             \chdir($localDir);
@@ -361,7 +359,6 @@ class FtpHandler
                                 $innerLocalPath = $localDir.DIRECTORY_SEPARATOR.$filePaths[$i];
                                 $innerFtpPath = $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i];
                                     
-                                //if ($fileInfo[$i][0] === 'd') 
                                 if(\mb_substr($fileInfo[$i], 0, 1, "UTF-8") === 'd')
                                 {
                                     \mkdir($innerLocalPath);
@@ -431,7 +428,7 @@ class FtpHandler
                                     //$isfilechmo = ftp_chmod($this->hConnection, 0777, $filePaths[$i]); // doesn't work? check again with pasv=true
                                     if(!\ftp_delete($this->hConnection, $curDirRestore.DIRECTORY_SEPARATOR.$filePaths[$i]))
                                     {
-                                        $this->err('DEL', $filePaths[$i]);
+                                        new Error('DEL', $filePaths[$i]);
                                     }
                                 }
                             }
@@ -440,13 +437,13 @@ class FtpHandler
 
                     if(!\ftp_rmdir($this->hConnection , $ftpDir))
                     {
-                        $this->err('DEL', $ftpDir);
+                        new Error('DEL', $ftpDir);
                     }
                 }
             } 
             else 
             { 
-                $this->err('CHDIR', $ftpDir);
+                new Error('CHDIR', $ftpDir);
             }
         }
     }
