@@ -248,7 +248,6 @@ class Handler
         foreach($relativePaths as $ignoredFile)
         {
             $this->blackList[] = $ignoredFile;
-            print_r($this->blackList);
         }
     }
 
