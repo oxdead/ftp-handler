@@ -240,7 +240,7 @@ class Handler
     }
 
     /**
-     * Add additional files to be ignored on upload/download. Persists to the end of object life
+     * Ignore additional files on upload/download. Persists to the end of object life
      * @param array<string> $relativePaths
      */
     public function ignoreFiles($relativePaths)
@@ -248,6 +248,7 @@ class Handler
         foreach($relativePaths as $ignoredFile)
         {
             $this->blackList[] = $ignoredFile;
+            print_r($this->blackList);
         }
     }
 
