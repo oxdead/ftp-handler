@@ -12,8 +12,8 @@ use function \Lyo\Funcs\General\{extractFilepath, extractFilename, isValidDir, i
 //https://stackoverflow.com/questions/927341/upload-entire-directory-via-php-ftp
 
 
-// todo: extend exception class to be able to reference file and line of code. Also use set_exception_handler for custom formatting
-class Error
+// todo: use set_exception_handler
+class Error extends \Exception
 {
     private const CNNCTN = 'Connection has failed!';
     private const LOGIN = 'Login name or password is incorrect!';
@@ -27,9 +27,11 @@ class Error
 
     public function __construct($err, ...$helpers)
     {
+        parent::__construct();
         $help = "";
         foreach($helpers as $helper) { $help.=($helper." "); }
-        echo "error:ftp: ".constant("self::$err")." ( {$help})", PHP_EOL;
+        echo "error:ftp [", $this->GetFile(), ":", $this->Getline(), "] ";
+        echo \constant("self::$err")." ( {$help})", PHP_EOL;
     }
 };
 
